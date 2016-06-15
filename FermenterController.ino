@@ -1,86 +1,114 @@
-// Adding description text
+/*
+UDPSendReceiveString:
+This sketch receives UDP message strings, prints them to the serial port
+and sends an "acknowledge" string back to the sender
+
+A Processing sketch is included at the end of file that can be used to send
+and received messages for testing with a computer.
+
+created 21 Aug 2010
+by Michael Margolis
+
+This code is in the public domain.
+*/
 
 
-#include "Fermentor.h"
-#include <Time.h>  
-#define TIME_HEADER  "T"   // Header tag for serial time sync message
-#define TIME_REQUEST  7    // ASCII bell character requests a time sync message 
+#include <SPI.h>         // needed for Arduino versions later than 0018
+#include <Ethernet.h>
+#include <EthernetUdp.h>         // UDP library from: bjoern@cs.stanford.edu 12/30/2008
 
 
-static char systemDevider = '_';
-static char valueDevider = ':';
+// Enter a MAC address and IP address for your controller below.
+// The IP address will be dependent on your local network:
+byte mac[] = {
+	0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xE0
+};
+IPAddress ip(192, 168, 3, 177);
 
-long unsigned int CurrentTime, DifTime, SetTime = millis();
+unsigned int localPort = 8888;      // local port to listen on
 
-FermentorClass Ferm1;
+									// buffers for receiving and sending data
+char packetBuffer[UDP_TX_PACKET_MAX_SIZE];  //buffer to hold incoming packet,
+char  ReplyBuffer[] = "acknowledged";       // a string to send back
 
-bool Serial0_Input_stringcomplete, Serial1_Input_stringcomplete, Serial2_Input_stringcomplete, Serial3_Input_stringcomplete;
-String AllInfoString;
+											// An EthernetUDP instance to let us send and receive packets over UDP
+EthernetUDP Udp;
 
-void setup()
-{
+void setup() {
+	// start the Ethernet and UDP:
+	Ethernet.begin(mac, ip);
+	Udp.begin(localPort);
 
 	Serial.begin(9600);
-	Serial1.begin(9600);
-	setSyncProvider(requestSync);  //set function to call when sync required
-	
 }
 
-void serialEvent() {
-	String Serial0_InString = Serial.readString();
-
-	if (Serial0_InString.endsWith("\n")) {
-		Serial0_Input_stringcomplete = true;
-	}
-}
-
-void serial1Event(){
-	String Serial1_InString = Serial1.readString();
-
-	if (Serial1_InString.endsWith("\n")) {
-		Serial1_Input_stringcomplete = true;
-	}
-}
-
-void serial2Event(){
-	String Serial2_InString = Serial2.readString();
-
-	if (Serial2_InString.endsWith("\n")) {
-		Serial2_Input_stringcomplete = true;
-	}
-}
-
-void serial3Event(){
-	String Serial3_InString = Serial3.readString();
-
-	if (Serial3_InString.endsWith("\n")) {
-		Serial3_Input_stringcomplete = true;
-	}
-}
-void loop()
-{
-	// Getting Temperatures
-	//TemperatureSensors.requestTemperatures();
-	//AllInfoString = "";
-	//Temperature = TemperatureSensors.getTempCByIndex(0);
-
-}
-
-
-void processSyncMessage() {
-	unsigned long pctime;
-	const unsigned long DEFAULT_TIME = 1357041600; // Jan 1 2013
-
-	if (Serial.find(TIME_HEADER)) {
-		pctime = Serial.parseInt();
-		if (pctime >= DEFAULT_TIME) { // check the integer is a valid time (greater than Jan 1 2013)
-			setTime(pctime); // Sync Arduino clock to the time received on the serial port
+void loop() {
+	// if there's data available, read a packet
+	int packetSize = Udp.parsePacket();
+	if (packetSize) {
+		Serial.print("Received packet of size ");
+		Serial.println(packetSize);
+		Serial.print("From ");
+		IPAddress remote = Udp.remoteIP();
+		for (int i = 0; i < 4; i++) {
+			Serial.print(remote[i], DEC);
+			if (i < 3) {
+				Serial.print(".");
+			}
 		}
+		Serial.print(", port ");
+		Serial.println(Udp.remotePort());
+
+		// read the packet into packetBufffer
+		Udp.read(packetBuffer, UDP_TX_PACKET_MAX_SIZE);
+		Serial.println("Contents:");
+		Serial.println(packetBuffer);
+
+		// send a reply to the IP address and port that sent us the packet we received
+		Udp.beginPacket(Udp.remoteIP(), Udp.remotePort());
+		Udp.write(ReplyBuffer);
+		Udp.endPacket();
 	}
+	delay(10);
 }
 
-time_t requestSync()
-{
-	Serial.write(TIME_REQUEST);
-	return 0; // the time will be sent later in response to serial mesg
+
+/*
+Processing sketch to run with this example
+=====================================================
+
+// Processing UDP example to send and receive string data from Arduino
+// press any key to send the "Hello Arduino" message
+
+
+import hypermedia.net.*;
+
+UDP udp;  // define the UDP object
+
+
+void setup() {
+udp = new UDP( this, 6000 );  // create a new datagram connection on port 6000
+//udp.log( true );         // <-- printout the connection activity
+udp.listen( true );           // and wait for incoming message
 }
+
+void draw()
+{
+}
+
+void keyPressed() {
+String ip       = "192.168.1.177"; // the remote IP address
+int port        = 8888;        // the destination port
+
+udp.send("Hello World", ip, port );   // the message to send
+
+}
+
+void receive( byte[] data ) {          // <-- default handler
+//void receive( byte[] data, String ip, int port ) {   // <-- extended handler
+
+for(int i=0; i < data.length; i++)
+print(char(data[i]));
+println();
+}
+*/
